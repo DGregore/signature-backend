@@ -13,7 +13,12 @@ import { SectorModule } from './sector/sector.module';
 import { Sector } from './sector/sector.entity';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard'; // Import JwtAuthGuard
 import { Document } from './document/document.entity'; // Import Document entity
+import { DocumentSignatory } from './document/document-signatory.entity'; // Import DocumentSignatory entity
 import { RefreshToken } from './auth/entities/refresh-token.entity'; // Import RefreshToken entity
+import { SignatureModule } from './signature/signature.module'; // Import SignatureModule
+import { Signature } from './signature/signature.entity'; // Import Signature entity
+import { AuditLogModule } from './audit-log/audit-log.module'; // Import AuditLogModule
+import { AuditLog } from './audit-log/audit-log.entity'; // Import AuditLog entity
 
 @Module({
   imports: [
@@ -29,7 +34,15 @@ import { RefreshToken } from './auth/entities/refresh-token.entity'; // Import R
         username: configService.get<string>('DB_USERNAME', 'postgres'), // Use provided user or default
         password: configService.get<string>('DB_PASSWORD', 'dg!!#!((%$'), // Use provided password or default
         database: configService.get<string>('DB_DATABASE', 'signature_db'),
-        entities: [User, Sector, Document, RefreshToken], // Add RefreshToken entity here
+        entities: [
+          User,
+          Sector,
+          Document,
+          DocumentSignatory, // Add DocumentSignatory entity
+          RefreshToken,
+          Signature, // Add Signature entity
+          AuditLog, // Add AuditLog entity
+        ],
         synchronize: configService.get<string>('NODE_ENV', 'development') !== 'production',
       }),
       inject: [ConfigService],
@@ -37,8 +50,10 @@ import { RefreshToken } from './auth/entities/refresh-token.entity'; // Import R
     UserModule,
     AuthModule,
     DocumentModule,
+    SignatureModule, // Add SignatureModule
     SectorModule,
     NotificationModule,
+    AuditLogModule, // Add AuditLogModule
   ],
   controllers: [AppController],
   providers: [

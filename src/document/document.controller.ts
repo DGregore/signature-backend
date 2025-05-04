@@ -2,107 +2,139 @@ import {
   Controller,
   Post,
   Get,
+  Put,
+  Delete,
   Param,
   Body,
   UploadedFile,
   UseInterceptors,
-  ParseFilePipe,
-  FileTypeValidator,
+  UseGuards,
+  Request,
+  ParseIntPipe,
+  Res,
+  StreamableFile,
   HttpStatus,
   HttpCode,
   Logger,
+  ParseFilePipe,
+  FileTypeValidator,
+  // MaxFileSizeValidator, // Optional: Add back if needed
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { DocumentService } from './document.service';
-import { MinioService } from './minio.service';
-import { Express } from 'express'; // Import Express
-import { Multer } from 'multer'; // Correct import for Multer
-import { v4 as uuidv4 } from 'uuid'; // For generating unique filenames
-import * as path from 'path';
+import { Document } from './document.entity';
+import { UploadDocumentDto } from './dto/create-document.dto';
+import { UpdateDocumentDto } from './dto/update-document.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'; // Adjust path if needed
+import { RolesGuard } from '../auth/guards/roles.guard'; // Adjust path if needed
+import { Roles } from '../auth/decorators/roles.decorator'; // Adjust path if needed
+import { UserRole } from '../user/user.entity'; // Adjust path if needed
+import { Express, Response } from 'express'; // Import Express and Response
+// import { Multer } from 'multer'; // Not explicitly needed here
 
-@Controller('api/documents') // Prefixing with /api for consistency
+@Controller('api/documents')
+@UseGuards(JwtAuthGuard) // Apply JWT guard to all routes in this controller
 export class DocumentController {
   private readonly logger = new Logger(DocumentController.name);
 
-  constructor(
-    private documentService: DocumentService,
-    private minioService: MinioService,
-  ) {}
+  constructor(private documentService: DocumentService) {}
 
-  // Rota para upload de um novo documento PDF para o MinIO
-  @Post('upload')
+  // --- Upload Document --- //
+  @Post()
   @HttpCode(HttpStatus.CREATED)
-  @UseInterceptors(FileInterceptor('file')) // Use memory storage by default if no storage option is provided
+  @UseInterceptors(FileInterceptor('file')) // 'file' is the field name in the form-data
+  // @Roles(UserRole.ADMIN, UserRole.USER) // Example: Allow specific roles
   async uploadDocument(
-    @Body('name') name: string, // Extract name and description from body
-    @Body('description') description: string,
+    @Body() uploadDto: UploadDocumentDto, // Receive DTO from body
     @UploadedFile(
       new ParseFilePipe({
         validators: [
-          // new MaxFileSizeValidator({ maxSize: 10000000 }), // Example: Limit size to 10MB
-          new FileTypeValidator({ fileType: 'application/pdf' }), // Validate if it's a PDF
+          // new MaxFileSizeValidator({ maxSize: 10000000 }), // Example: 10MB limit
+          new FileTypeValidator({ fileType: 'application/pdf' }),
         ],
       }),
     )
     file: Express.Multer.File,
-  ) {
-    this.logger.log(`Received file upload request: ${file.originalname}, size: ${file.size}, mimetype: ${file.mimetype}`);
-    if (!name) {
-        name = path.parse(file.originalname).name; // Use original filename without extension if name is not provided
-    }
-    if (!description) {
-        description = ''; // Default description if not provided
-    }
-
-    // Generate a unique filename for MinIO to avoid collisions
-    const uniqueFileName = `${uuidv4()}${path.extname(file.originalname)}`;
-
-    try {
-      // Upload to MinIO
-      const uploadResult = await this.minioService.uploadFile(
-        uniqueFileName,
-        file.buffer,
-        file.mimetype,
-      );
-      this.logger.log(`File uploaded to MinIO. ETag: ${uploadResult.etag}, Filename: ${uniqueFileName}`);
-
-      // TODO: Save document metadata (name, description, uniqueFileName, etag, etc.) to PostgreSQL via DocumentService
-      // Example (assuming DocumentService.create is adapted):
-      // const document = await this.documentService.create(name, description, uniqueFileName, uploadResult.etag, file.mimetype, file.size);
-
-      return {
-        message: 'File uploaded successfully!',
-        fileName: uniqueFileName,
-        originalName: file.originalname,
-        etag: uploadResult.etag,
-        // documentId: document.id // Return document ID after saving to DB
-      };
-    } catch (error) {
-      this.logger.error(`Failed to upload file ${file.originalname}: ${error.message}`, error.stack);
-      // Consider throwing a more specific HTTP exception
-      throw error;
-    }
+    @Request() req: any, // Get user from request (added by JwtAuthGuard)
+  ): Promise<Document> {
+    const userId = req.user.userId; // Extract user ID from JWT payload
+    this.logger.log(`User ID ${userId} uploading document: ${file.originalname}`);
+    // The DTO now includes signatories, title, description
+    return this.documentService.create(uploadDto, file, userId);
   }
 
-  // Rota para listar todos os documentos (metadata from DB)
+  // --- List Documents --- //
   @Get()
-  async findAll() {
-    // TODO: Implement fetching document list from DocumentService (which queries the DB)
-    // return await this.documentService.findAll();
-    this.logger.log('Fetching all documents metadata...');
-    return { message: 'List functionality not yet implemented.' };
+  // @Roles(UserRole.ADMIN, UserRole.USER) // Allow all authenticated users (permissions checked in service)
+  async findAll(@Request() req: any): Promise<Document[]> {
+    const userId = req.user.userId;
+    const userRole = req.user.role;
+    this.logger.log(`User ID ${userId} (Role: ${userRole}) listing documents`);
+    // TODO: Add query params for filtering/pagination and pass to service
+    // For now, service might return all or implement basic filtering
+    return this.documentService.findAll(); // Service needs permission logic
   }
 
-  // Rota para buscar metadados de um documento específico (from DB)
+  // --- Get Document Details --- //
   @Get(':id')
-  async findOne(@Param('id') id: string) {
-    // TODO: Implement fetching specific document metadata from DocumentService
-    // return await this.documentService.findOne(parseInt(id, 10));
-    this.logger.log(`Fetching metadata for document ID: ${id}...`);
-    return { message: `Find one functionality for ID ${id} not yet implemented.` };
+  // @Roles(UserRole.ADMIN, UserRole.USER) // Permissions checked in service
+  async findOne(
+    @Param('id', ParseIntPipe) id: number,
+    @Request() req: any,
+  ): Promise<Document> {
+    const userId = req.user.userId;
+    const userRole = req.user.role;
+    this.logger.log(`User ID ${userId} (Role: ${userRole}) getting details for document ID: ${id}`);
+    return this.documentService.findOne(id, userId, userRole);
   }
 
-  // TODO: Add endpoint for downloading a document from MinIO
-  // TODO: Add endpoint for deleting a document (metadata from DB and file from MinIO)
+  // --- Download Document --- //
+  @Get(':id/download')
+  // @Roles(UserRole.ADMIN, UserRole.USER) // Permissions checked in service
+  async downloadDocument(
+    @Param('id', ParseIntPipe) id: number,
+    @Request() req: any,
+    @Res({ passthrough: true }) res: Response, // Inject Response, passthrough allows manual header setting
+  ): Promise<StreamableFile> {
+    const userId = req.user.userId;
+    const userRole = req.user.role;
+    this.logger.log(`User ID ${userId} (Role: ${userRole}) downloading document ID: ${id}`);
+
+    const { stream, filename, mimetype } = await this.documentService.getDownloadStream(id, userId, userRole);
+
+    // Set headers for download
+    res.setHeader('Content-Type', mimetype);
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+    return new StreamableFile(stream);
+  }
+
+  // --- Update Document --- //
+  @Put(':id')
+  // @Roles(UserRole.ADMIN) // Example: Only allow Admins or Owner (checked in service)
+  async update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() updateDto: UpdateDocumentDto,
+    @Request() req: any,
+  ): Promise<Document> {
+    const userId = req.user.userId;
+    const userRole = req.user.role;
+    this.logger.log(`User ID ${userId} (Role: ${userRole}) updating document ID: ${id}`);
+    return this.documentService.update(id, updateDto, userId, userRole);
+  }
+
+  // --- Delete Document --- //
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  // @Roles(UserRole.ADMIN) // Example: Only allow Admins or Owner (checked in service)
+  async delete(
+    @Param('id', ParseIntPipe) id: number,
+    @Request() req: any,
+  ): Promise<void> {
+    const userId = req.user.userId;
+    const userRole = req.user.role;
+    this.logger.log(`User ID ${userId} (Role: ${userRole}) deleting document ID: ${id}`);
+    return this.documentService.delete(id, userId, userRole);
+  }
 }
 
