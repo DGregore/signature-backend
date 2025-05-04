@@ -1,17 +1,18 @@
-import { Controller, Get, Post, Body, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UsePipes, ValidationPipe, ParseIntPipe, HttpCode, HttpStatus } from '@nestjs/common';
 import { SectorService } from './sector.service';
+import { CreateSectorDto } from './dto/create-sector.dto';
+import { UpdateSectorDto } from './dto/update-sector.dto';
 import { Sector } from './sector.entity';
 
-@Controller('sectors')
+@Controller('api/sectors') // Ajustado para /api/sectors para corresponder ao frontend
 export class SectorController {
   constructor(private readonly sectorService: SectorService) {}
 
   @Post()
-  create(
-    @Body('name') name: string,
-    @Body('description') description: string,
-  ): Promise<Sector> {
-    return this.sectorService.create(name, description);
+  @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
+  @HttpCode(HttpStatus.CREATED)
+  create(@Body() createSectorDto: CreateSectorDto): Promise<Sector> {
+    return this.sectorService.create(createSectorDto);
   }
 
   @Get()
@@ -19,8 +20,21 @@ export class SectorController {
     return this.sectorService.findAll();
   }
 
+  @Get(':id')
+  findOne(@Param('id', ParseIntPipe) id: number): Promise<Sector> {
+    return this.sectorService.findOne(id);
+  }
+
+  @Patch(':id')
+  @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, skipMissingProperties: true }))
+  update(@Param('id', ParseIntPipe) id: number, @Body() updateSectorDto: UpdateSectorDto): Promise<Sector> {
+    return this.sectorService.update(id, updateSectorDto);
+  }
+
   @Delete(':id')
-  remove(@Param('id') id: number): Promise<void> {
+  @HttpCode(HttpStatus.NO_CONTENT)
+  remove(@Param('id', ParseIntPipe) id: number): Promise<void> {
     return this.sectorService.remove(id);
   }
 }
+
