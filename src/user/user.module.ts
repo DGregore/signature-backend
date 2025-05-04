@@ -3,14 +3,15 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { UserService } from './user.service';
 import { UserController } from './user.controller';
 import { User } from './user.entity';
-import { SectorModule } from '../sector/sector.module'; // Importando o SectorModule
+import { SectorModule } from '../sector/sector.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User]), // Registrando o repositório de Usuário
-    SectorModule, // Importando o SectorModule para ter acesso ao SectorService
+    TypeOrmModule.forFeature([User]),
+    SectorModule,
   ],
   providers: [UserService],
   controllers: [UserController],
+  exports: [UserService] // <--- Adicione esta linha
 })
 export class UserModule {}

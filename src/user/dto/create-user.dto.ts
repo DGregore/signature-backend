@@ -1,4 +1,5 @@
-import { IsString, IsEmail, IsNotEmpty, MinLength, IsInt, IsPositive } from 'class-validator';
+import { IsString, IsEmail, IsNotEmpty, MinLength, IsInt, IsPositive, IsOptional, IsEnum } from 'class-validator';
+import { UserRole } from '../user.entity'; // Import the enum
 
 export class CreateUserDto {
   @IsString()
@@ -16,6 +17,11 @@ export class CreateUserDto {
 
   @IsInt({ message: 'O ID do setor deve ser um número inteiro.' })
   @IsPositive({ message: 'O ID do setor deve ser um número positivo.' })
-  @IsNotEmpty({ message: 'O ID do setor não pode estar vazio.' })
-  sectorId: number;
+  @IsOptional() // Making sector optional for now, adjust if needed
+  sectorId?: number;
+
+  @IsOptional()
+  @IsEnum(UserRole, { message: 'Role inválido. Use \'admin\' ou \'user\'.' })
+  role?: UserRole; // Add optional role field
 }
+

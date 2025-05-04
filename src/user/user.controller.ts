@@ -1,47 +1,51 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UsePipes, ValidationPipe, ParseIntPipe, HttpCode, HttpStatus } from '@nestjs/common';
-import { UserService } from './user.service';
+import { Controller, Get, Post, Body, Param, Delete, Put, ParseIntPipe, UseGuards } from '@nestjs/common'; // Import UseGuards
+import { UserService, UserPublicProfile } from './user.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { User } from './user.entity'; // Importar User entity
+import { Roles } from '../auth/decorators/roles.decorator'; // Import Roles decorator
+import { UserRole } from './user.entity'; // Import UserRole enum
+import { RolesGuard } from '../auth/guards/roles.guard'; // Import RolesGuard
 
-@Controller('api/users') // Ajustado para /api/users para corresponder ao frontend
+@Controller('api/users')
+// Apply RolesGuard to the entire controller or specific routes
+// Note: JwtAuthGuard is already applied globally via AppModule
 export class UserController {
   constructor(private readonly userService: UserService) {}
 
   @Post()
-  @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
-  @HttpCode(HttpStatus.CREATED)
-  async create(@Body() createUserDto: CreateUserDto): Promise<Omit<User, 'password'>> { // Retorna sem senha
-    const user = await this.userService.create(createUserDto);
-    const { password, ...result } = user; // Remove a senha do objeto retornado
-    return result;
+  @UseGuards(RolesGuard) // Apply RolesGuard
+  @Roles(UserRole.ADMIN) // Only ADMIN can create users
+  create(@Body() createUserDto: CreateUserDto): Promise<UserPublicProfile> {
+    return this.userService.create(createUserDto);
   }
 
   @Get()
-  async findAll(): Promise<Omit<User, 'password'>[]> { // Retorna sem senha
-    // O service já retorna sem senha
+  // No specific role needed, any authenticated user can list users (due to global JwtAuthGuard)
+  // If only ADMIN should list all users, add @UseGuards(RolesGuard) and @Roles(UserRole.ADMIN)
+  findAll(): Promise<UserPublicProfile[]> {
     return this.userService.findAll();
   }
 
   @Get(':id')
-  async findOne(@Param('id', ParseIntPipe) id: number): Promise<Omit<User, 'password'>> { // Retorna sem senha
-     // O service já retorna sem senha
+  // No specific role needed, any authenticated user can view a user profile
+  // If only ADMIN or the user themselves should view, more complex logic/guard needed
+  findOne(@Param('id', ParseIntPipe) id: number): Promise<UserPublicProfile> {
     return this.userService.findOne(id);
   }
 
-  @Patch(':id')
-  @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, skipMissingProperties: true }))
-  async update(@Param('id', ParseIntPipe) id: number, @Body() updateUserDto: UpdateUserDto): Promise<Omit<User, 'password'>> { // Retorna sem senha
-    // O service já retorna sem senha
+  @Put(':id')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN) // Only ADMIN can update users (for now)
+  // If users should update themselves, a different logic/guard is needed
+  update(@Param('id', ParseIntPipe) id: number, @Body() updateUserDto: UpdateUserDto): Promise<UserPublicProfile> {
     return this.userService.update(id, updateUserDto);
   }
 
   @Delete(':id')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  async remove(@Param('id', ParseIntPipe) id: number): Promise<void> {
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN) // Only ADMIN can delete users
+  remove(@Param('id', ParseIntPipe) id: number): Promise<void> {
     return this.userService.remove(id);
   }
-
-  // TODO: Adicionar endpoints de login, registro, perfil se ainda não existirem em AuthController
 }
 
